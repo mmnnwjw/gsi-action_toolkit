@@ -21,22 +21,29 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Download, Compress & Publish
+      - name: Download, Split (Store Only) & Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts upload
 
-          # 1. 从指定 Run 下载所有产物
+          # 1. 下载构建产物
           gh run download "${{ inputs.run_id }}" --repo "${{ github.repository }}" -D ./artifacts
 
-          # 2. 使用多线程将 .img 压缩为 .img.xz（解决 GitHub Release 2GB 单文件限制）
-          find ./artifacts -type f -name "*.img" -exec xz -T0 -v {} \;
+          # 2. 找到 .img 文件并使用 -mx0（仅存储不压缩）快速进行 1500MB 分卷打包
+          IMG_FILE=$(find ./artifacts -type f -name "*.img" | head -n 1)
+          IMG_NAME=$(basename "$IMG_FILE")
+          7z a -mx0 -v1500m "./upload/${IMG_NAME}.7z" "$IMG_FILE"
 
-          # 3. 提取所有文件到平级 upload 目录，避免嵌套文件夹层级问题
-          find ./artifacts -type f -exec mv -t ./upload/ {} +
+          # 3. 收集其他小文件（如校验文件 .sha256）
+          find ./artifacts -type f ! -name "*.img" -exec mv -t ./upload/ {} +
 
-          # 4. 创建 Release 并上传全部文件
+          # 4. 生成分卷文件的 sha256 校验码
+          cd upload
+          sha256sum *.7z.* > "${IMG_NAME}.7z.sha256"
+          cd ..
+
+          # 5. 上传所有分卷及校验文件到 Release
           gh release create "${{ inputs.tag_name }}" ./upload/* \
             --repo "${{ github.repository }}" \
             --title "${{ inputs.tag_name }}" \

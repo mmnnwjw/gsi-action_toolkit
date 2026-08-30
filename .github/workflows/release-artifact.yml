@@ -1,0 +1,33 @@
+name: Publish Existing Artifact to Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: '33309679307'
+        required: true
+        type: string
+      tag_name:
+        description: 'v20260814'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts & Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 从指定 Run 下载所有产物到 artifacts 目录
+          gh run download "${{ inputs.run_id }}" --repo "${{ github.repository }}" -D ./artifacts
+          
+          # 创建 Release 并上传文件
+          gh release create "${{ inputs.tag_name }}" ./artifacts/**/* \
+            --repo "${{ github.repository }}" \
+            --title "${{ inputs.tag_name }}" \
+            --generate-notes

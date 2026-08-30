@@ -4,13 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: '33309679307'
+        description: 'Run ID'
         required: true
         type: string
+        default: '33309679307'
       tag_name:
-        description: 'v20260814'
+        description: 'Release Tag'
         required: true
         type: string
+        default: 'v20260814'
 
 permissions:
   contents: write
@@ -19,15 +21,23 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Artifacts & Create Release
+      - name: Download, Compress & Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 从指定 Run 下载所有产物到 artifacts 目录
+          mkdir -p artifacts upload
+
+          # 1. 从指定 Run 下载所有产物
           gh run download "${{ inputs.run_id }}" --repo "${{ github.repository }}" -D ./artifacts
-          
-          # 创建 Release 并上传文件
-          gh release create "${{ inputs.tag_name }}" ./artifacts/**/* \
+
+          # 2. 使用多线程将 .img 压缩为 .img.xz（解决 GitHub Release 2GB 单文件限制）
+          find ./artifacts -type f -name "*.img" -exec xz -T0 -v {} \;
+
+          # 3. 提取所有文件到平级 upload 目录，避免嵌套文件夹层级问题
+          find ./artifacts -type f -exec mv -t ./upload/ {} +
+
+          # 4. 创建 Release 并上传全部文件
+          gh release create "${{ inputs.tag_name }}" ./upload/* \
             --repo "${{ github.repository }}" \
             --title "${{ inputs.tag_name }}" \
             --generate-notes
